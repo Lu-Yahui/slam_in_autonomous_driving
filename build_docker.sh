@@ -1,0 +1,1 @@
+docker build --build-arg user_id=$(id -u) --build-arg group_id=$(id -g) --build-arg user_name=$(whoami) --build-arg workdir=$(pwd) --build-arg homedir=$HOME -t slam_in_autonomous_driving .
