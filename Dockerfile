@@ -13,6 +13,9 @@ ARG homedir
 RUN apt-get update && \
     apt-get install -y sudo wget curl unzip vim git cmake gdb htop libeigen3-dev libgl1-mesa-dev libglew-dev qtbase5-dev libgoogle-glog-dev libpcl-dev libopencv-dev ros-noetic-pcl-ros libyaml-cpp-dev ros-noetic-velodyne-msgs libsuitesparse-dev libgtest-dev ros-noetic-angles pcl-tools libbtbb-dev
 
+# Install cuda toolkit
+RUN apt-get install -y nvidia-cuda-toolkit
+
 # Install pangolin recommended prerequisites 
 RUN apt-get install -y libwayland-dev libxkbcommon-dev wayland-protocols libegl1-mesa-dev libc++-dev g++ ninja-build libjpeg-dev libpng-dev libavcodec-dev libavutil-dev libavformat-dev libswscale-dev libavdevice-dev
 
