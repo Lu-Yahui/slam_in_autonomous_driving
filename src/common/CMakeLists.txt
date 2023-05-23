@@ -6,12 +6,14 @@ add_library(${PROJECT_NAME}.common
         global_flags.cc
         g2o_types.cc
         point_cloud_utils.cc
+        cuda_utils.h
         )
 
 target_link_libraries(${PROJECT_NAME}.common
         ${PROJECT_NAME}.tools
         ${catkin_LIBRARIES}
         ${PCL_LIBRARIES}
+        ${CUDA_LIBRARIES}
         )
 
 
