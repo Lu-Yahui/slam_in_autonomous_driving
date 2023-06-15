@@ -56,5 +56,6 @@ data/ch3/gnss_output.txt
 data/ch4/gins_preintg.txt
 
 thirdparty/g2o/**/*
+thirdparty/g2o/Makefile
 
 .vscode

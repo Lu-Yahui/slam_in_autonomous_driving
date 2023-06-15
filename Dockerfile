@@ -11,7 +11,7 @@ ARG homedir
 
 # Install prerequisite tools and libraries
 RUN apt-get update && \
-    apt-get install -y sudo wget curl unzip vim git cmake gdb htop libeigen3-dev libgl1-mesa-dev libglew-dev qtbase5-dev libgoogle-glog-dev libpcl-dev libopencv-dev ros-noetic-pcl-ros libyaml-cpp-dev ros-noetic-velodyne-msgs libsuitesparse-dev libgtest-dev ros-noetic-angles pcl-tools libbtbb-dev
+    apt-get install -y sudo wget curl unzip vim git cmake gdb htop libeigen3-dev libgl1-mesa-dev libglew-dev qtbase5-dev libgoogle-glog-dev libpcl-dev libopencv-dev ros-noetic-pcl-ros libyaml-cpp-dev ros-noetic-velodyne-msgs libsuitesparse-dev libgtest-dev ros-noetic-angles pcl-tools libbtbb-dev libgflags-dev libatlas-base-dev
 
 # Install cuda toolkit
 RUN apt-get install -y nvidia-cuda-toolkit
@@ -25,6 +25,16 @@ RUN git clone https://github.com/stevenlovegrove/Pangolin.git && \
     mkdir build && \
     cd build && \
     cmake .. && \
+    make -j && \
+    make install
+
+# Install ceres solver
+RUN wget -P /tmp https://github.com/ceres-solver/ceres-solver/archive/refs/tags/2.1.0.tar.gz && \
+    cd /tmp && \
+    tar zxf 2.1.0.tar.gz && \
+    mkdir ceres-bin && \
+    cd ceres-bin && \
+    cmake ../ceres-solver-2.1.0 && \
     make -j && \
     make install
 
