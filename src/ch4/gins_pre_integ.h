@@ -56,6 +56,7 @@ class GinsPreInteg {
         double circle_pulse_ = 1024.0;  // 编码器每圈脉冲数
 
         bool verbose_ = true;  // 是否输出调试信息
+        bool use_ceres_solver = true;
     };
 
     /// Option 可以在构造时设置，也可以在后续设置
@@ -93,6 +94,8 @@ class GinsPreInteg {
    private:
     // 优化
     void Optimize();
+
+    void OptimizeWithCeresSolver();
 
     Options options_;
     double current_time_ = 0.0;  // 当前时间

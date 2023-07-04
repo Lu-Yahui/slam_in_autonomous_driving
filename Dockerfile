@@ -34,7 +34,7 @@ RUN wget -P /tmp https://github.com/ceres-solver/ceres-solver/archive/refs/tags/
     tar zxf 2.1.0.tar.gz && \
     mkdir ceres-bin && \
     cd ceres-bin && \
-    cmake ../ceres-solver-2.1.0 && \
+    cmake -DCMAKE_C_VISIBILITY_PRESET=default -DCMAKE_CXX_VISIBILITY_PRESET=default -DCMAKE_VISIBILITY_INLINES_HIDDEN=OFF -DCMAKE_BUILD_TYPE=Release ../ceres-solver-2.1.0 && \
     make -j && \
     make install
 

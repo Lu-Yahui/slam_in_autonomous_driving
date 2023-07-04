@@ -15,8 +15,6 @@
 #include "KDTreeVectorOfVectorsAdaptor.h"
 #include "nanoflann.hpp"
 
-#include "tictoc.h"
-
 namespace scan_context {
 
 struct PointXYZI {

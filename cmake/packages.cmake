@@ -66,6 +66,10 @@ include_directories(${Pangolin_INCLUDE_DIRS})
 find_package(yaml-cpp REQUIRED)
 include_directories(${yaml-cpp_INCLUDE_DIRS})
 
+# ceres solver
+find_package(Ceres REQUIRED)
+include_directories(${CERES_INCLUDE_DIRS})
+
 # cuda
 find_package(CUDA REQUIRED)
 include_directories(${CUDA_INCLUDE_DIRS})
@@ -117,6 +121,7 @@ if(BUILD_WITH_UBUNTU1804)
             ${OpenCV_LIBS}
             ${PCL_LIBRARIES}
             ${Pangolin_LIBRARIES}
+            ${CERES_LIBRARIES}
             glog gflags
             ${yaml-cpp_LIBRARIES}
             yaml-cpp
@@ -129,6 +134,7 @@ else()
             ${OpenCV_LIBS}
             ${PCL_LIBRARIES}
             ${Pangolin_LIBRARIES}
+            ${CERES_LIBRARIES}
             glog gflags
             ${yaml-cpp_LIBRARIES}
             yaml-cpp
