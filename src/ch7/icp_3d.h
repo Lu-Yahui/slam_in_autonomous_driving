@@ -28,13 +28,14 @@ class Icp3d {
         int min_effective_pts_ = 10;            // 最近邻点数阈值
         double eps_ = 1e-2;                     // 收敛判定条件
         bool use_initial_translation_ = false;  // 是否使用初始位姿中的平移估计
+        bool use_auto_diff = true;
     };
 
     Icp3d() {}
     Icp3d(Options options) : options_(options) {}
 
     /// 设置目标的Scan
-    void SetTarget(CloudPtr target) {
+    virtual void SetTarget(CloudPtr target) {
         target_ = target;
         BuildTargetKdTree();
 
@@ -46,7 +47,7 @@ class Icp3d {
     }
 
     /// 设置被配准的Scan
-    void SetSource(CloudPtr source) {
+    virtual void SetSource(CloudPtr source) {
         source_ = source;
         source_center_ = std::accumulate(source_->points.begin(), source_->points.end(), Vec3d::Zero().eval(),
                                          [](const Vec3d& c, const PointType& pt) -> Vec3d { return c + ToVec3d(pt); }) /
@@ -54,23 +55,23 @@ class Icp3d {
         LOG(INFO) << "source center: " << source_center_.transpose();
     }
 
-    void SetGroundTruth(const SE3& gt_pose) {
+    virtual void SetGroundTruth(const SE3& gt_pose) {
         gt_pose_ = gt_pose;
         gt_set_ = true;
     }
 
     /// 使用gauss-newton方法进行配准, 点到点
-    bool AlignP2P(SE3& init_pose);
+    virtual bool AlignP2P(SE3& init_pose);
 
     /// 基于gauss-newton的点线ICP
-    bool AlignP2Line(SE3& init_pose);
+    virtual bool AlignP2Line(SE3& init_pose);
 
     /// 基于gauss-newton的点面ICP
-    bool AlignP2Plane(SE3& init_pose);
+    virtual bool AlignP2Plane(SE3& init_pose);
 
-   private:
+   protected:
     // 建立目标点云的Kdtree
-    void BuildTargetKdTree();
+    virtual void BuildTargetKdTree();
 
     std::shared_ptr<KdTree> kdtree_ = nullptr;  // 第5章的kd树
 

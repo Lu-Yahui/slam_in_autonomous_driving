@@ -11,9 +11,10 @@
 #include <pcl/registration/ndt.h>
 
 #include "ch7/icp_3d.h"
+#include "ch7/icp_3d_ceres.h"
 #include "ch7/ndt_3d.h"
-#include "common/sys_utils.h"
 #include "common/point_cloud_utils.h"
+#include "common/sys_utils.h"
 
 DEFINE_string(source, "./data/ch7/EPFL/kneeling_lady_source.pcd", "第1个点云路径");
 DEFINE_string(target, "./data/ch7/EPFL/kneeling_lady_target.pcd", "第2个点云路径");
@@ -43,6 +44,7 @@ int main(int argc, char** argv) {
 
     bool success;
 
+    LOG(INFO) << "###### ICP P2P ######";
     sad::evaluate_and_call(
         [&]() {
             sad::Icp3d icp;
@@ -63,7 +65,52 @@ int main(int argc, char** argv) {
         },
         "ICP P2P", 1);
 
+    LOG(INFO) << "###### ICP P2P Ceres Auto Diff ######";
+    sad::evaluate_and_call(
+        [&]() {
+            sad::Icp3dCeres icp;
+            icp.SetSource(source);
+            icp.SetTarget(target);
+            icp.SetGroundTruth(gt_pose);
+            SE3 pose;
+            success = icp.AlignP2P(pose);
+            if (success) {
+                LOG(INFO) << "icp p2p align success, pose: " << pose.so3().unit_quaternion().coeffs().transpose()
+                          << ", " << pose.translation().transpose();
+                sad::CloudPtr source_trans(new sad::PointCloudType);
+                pcl::transformPointCloud(*source, *source_trans, pose.matrix().cast<float>());
+                sad::SaveCloudToFile("./data/ch7/icp_ceres_auto_diff_trans.pcd", *source_trans);
+            } else {
+                LOG(ERROR) << "align failed.";
+            }
+        },
+        "ICP P2P Ceres Auto Diff", 1);
+
+    LOG(INFO) << "###### ICP P2P Ceres Analytic Diff ######";
+    sad::evaluate_and_call(
+        [&]() {
+            sad::Icp3d::Options options;
+            options.use_auto_diff = false;
+            sad::Icp3dCeres icp(options);
+            icp.SetSource(source);
+            icp.SetTarget(target);
+            icp.SetGroundTruth(gt_pose);
+            SE3 pose;
+            success = icp.AlignP2P(pose);
+            if (success) {
+                LOG(INFO) << "icp p2p align success, pose: " << pose.so3().unit_quaternion().coeffs().transpose()
+                          << ", " << pose.translation().transpose();
+                sad::CloudPtr source_trans(new sad::PointCloudType);
+                pcl::transformPointCloud(*source, *source_trans, pose.matrix().cast<float>());
+                sad::SaveCloudToFile("./data/ch7/icp_ceres_analytic_diff_trans.pcd", *source_trans);
+            } else {
+                LOG(ERROR) << "align failed.";
+            }
+        },
+        "ICP P2P Ceres Analytic Diff", 1);
+
     /// 点到面
+    LOG(INFO) << "###### ICP P2Plane ######";
     sad::evaluate_and_call(
         [&]() {
             sad::Icp3d icp;
@@ -84,7 +131,31 @@ int main(int argc, char** argv) {
         },
         "ICP P2Plane", 1);
 
+    LOG(INFO) << "###### ICP P2Plane Ceres Analytic Diff ######";
+    sad::evaluate_and_call(
+        [&]() {
+            sad::Icp3d::Options options;
+            options.use_auto_diff = false;
+            sad::Icp3dCeres icp(options);
+            icp.SetSource(source);
+            icp.SetTarget(target);
+            icp.SetGroundTruth(gt_pose);
+            SE3 pose;
+            success = icp.AlignP2Plane(pose);
+            if (success) {
+                LOG(INFO) << "icp p2plane align success, pose: " << pose.so3().unit_quaternion().coeffs().transpose()
+                          << ", " << pose.translation().transpose();
+                sad::CloudPtr source_trans(new sad::PointCloudType);
+                pcl::transformPointCloud(*source, *source_trans, pose.matrix().cast<float>());
+                sad::SaveCloudToFile("./data/ch7/icp_plane_ceres_analytic_diff_trans.pcd", *source_trans);
+            } else {
+                LOG(ERROR) << "align failed.";
+            }
+        },
+        "ICP p2plane Ceres Analytic Diff", 1);
+
     /// 点到线
+    LOG(INFO) << "###### ICP P2Line ######";
     sad::evaluate_and_call(
         [&]() {
             sad::Icp3d icp;
@@ -95,7 +166,7 @@ int main(int argc, char** argv) {
             success = icp.AlignP2Line(pose);
             if (success) {
                 LOG(INFO) << "icp p2line align success, pose: " << pose.so3().unit_quaternion().coeffs().transpose()
-                           << ", " << pose.translation().transpose();
+                          << ", " << pose.translation().transpose();
                 sad::CloudPtr source_trans(new sad::PointCloudType);
                 pcl::transformPointCloud(*source, *source_trans, pose.matrix().cast<float>());
                 sad::SaveCloudToFile("./data/ch7/icp_line_trans.pcd", *source_trans);
@@ -105,7 +176,31 @@ int main(int argc, char** argv) {
         },
         "ICP P2Line", 1);
 
+    LOG(INFO) << "###### ICP P2Line Ceres Analytic Diff ######";
+    sad::evaluate_and_call(
+        [&]() {
+            sad::Icp3d::Options options;
+            options.use_auto_diff = false;
+            sad::Icp3dCeres icp(options);
+            icp.SetSource(source);
+            icp.SetTarget(target);
+            icp.SetGroundTruth(gt_pose);
+            SE3 pose;
+            success = icp.AlignP2Line(pose);
+            if (success) {
+                LOG(INFO) << "icp p2line align success, pose: " << pose.so3().unit_quaternion().coeffs().transpose()
+                          << ", " << pose.translation().transpose();
+                sad::CloudPtr source_trans(new sad::PointCloudType);
+                pcl::transformPointCloud(*source, *source_trans, pose.matrix().cast<float>());
+                sad::SaveCloudToFile("./data/ch7/icp_line_ceres_analytic_diff_trans.pcd", *source_trans);
+            } else {
+                LOG(ERROR) << "align failed.";
+            }
+        },
+        "ICP P2Line Ceres Analytic Diff", 1);
+
     /// 第７章的NDT
+    LOG(INFO) << "###### NDT ######";
     sad::evaluate_and_call(
         [&]() {
             sad::Ndt3d::Options options;
@@ -120,7 +215,7 @@ int main(int argc, char** argv) {
             success = ndt.AlignNdt(pose);
             if (success) {
                 LOG(INFO) << "ndt align success, pose: " << pose.so3().unit_quaternion().coeffs().transpose() << ", "
-                           << pose.translation().transpose();
+                          << pose.translation().transpose();
                 sad::CloudPtr source_trans(new sad::PointCloudType);
                 pcl::transformPointCloud(*source, *source_trans, pose.matrix().cast<float>());
                 sad::SaveCloudToFile("./data/ch7/ndt_trans.pcd", *source_trans);
@@ -131,6 +226,7 @@ int main(int argc, char** argv) {
         "NDT", 1);
 
     /// PCL ICP 作为备选
+    LOG(INFO) << "###### ICP PCL ######";
     sad::evaluate_and_call(
         [&]() {
             pcl::IterativeClosestPoint<sad::PointType, sad::PointType> icp_pcl;
@@ -150,6 +246,7 @@ int main(int argc, char** argv) {
         "ICP PCL", 1);
 
     /// PCL NDT 作为备选
+    LOG(INFO) << "###### NDT PCL ######";
     sad::evaluate_and_call(
         [&]() {
             pcl::NormalDistributionsTransform<sad::PointType, sad::PointType> ndt_pcl;
