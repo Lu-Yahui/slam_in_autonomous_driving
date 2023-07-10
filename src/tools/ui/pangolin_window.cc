@@ -4,7 +4,7 @@
 #include <glog/logging.h>
 namespace sad::ui {
 
-PangolinWindow::PangolinWindow() { impl_ = std::make_shared<PangolinWindowImpl>(); }
+PangolinWindow::PangolinWindow(const std::string& info) { impl_ = std::make_shared<PangolinWindowImpl>(info); }
 PangolinWindow::~PangolinWindow() {
     LOG(INFO) << "pangolin window is deallocated.";
     Quit();

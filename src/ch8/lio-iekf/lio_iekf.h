@@ -14,16 +14,28 @@
 
 #include "tools/ui/pangolin_window.h"
 
+#include "icp_3d_inc.h"
+
 namespace sad {
 
 class LioIEKF {
    public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
+    enum class Alignment : uint32_t {
+        Invalid = 0U,
+        NDT = 1U,
+        P2PICP = 2U,
+        P2LineICP = 3U,
+        P2PlaneICP = 4U,
+        LoamLike = 5U,
+    };
+
     struct Options {
         Options() {}
         bool save_motion_undistortion_pcd_ = false;  // 是否保存去畸变前后的点云
         bool with_ui_ = true;                        // 是否带着UI
+        Alignment alignment_ = Alignment::NDT;
     };
 
     LioIEKF(Options options = Options());
@@ -67,6 +79,12 @@ class LioIEKF {
     /// 执行一次配准和观测
     void Align();
 
+    void AlignWithNdt();
+
+    void AlignWithICP();
+
+    void AlignWithLoamLike();
+
     /// modules
     std::shared_ptr<MessageSync> sync_ = nullptr;
     StaticIMUInit imu_init_;
@@ -78,6 +96,9 @@ class LioIEKF {
     /// NDT数据
     IncNdt3d ndt_;
     SE3 last_pose_;
+
+    // ICP
+    std::unique_ptr<Icp3DIncBase> icp_{nullptr};
 
     // flags
     bool imu_need_init_ = true;

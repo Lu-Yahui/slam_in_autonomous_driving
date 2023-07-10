@@ -13,8 +13,8 @@
 #include "common/g2o_types.h"
 
 #include "common/lidar_utils.h"
-#include "common/timer/timer.h"
 #include "common/point_cloud_utils.h"
+#include "common/timer/timer.h"
 
 #include "lio_iekf.h"
 
@@ -32,8 +32,32 @@ bool LioIEKF::Init(const std::string &config_yaml) {
         return false;
     }
 
+    std::string alignment_type = "LIO. Alignment Type: ";
+    switch (options_.alignment_) {
+        case Alignment::P2PICP:
+            icp_ = std::make_unique<Icp3DIncP2P>();
+            alignment_type += "P2PICP";
+            break;
+        case Alignment::P2LineICP:
+            icp_ = std::make_unique<Icp3DIncP2Line>();
+            alignment_type += "P2LineICP";
+            break;
+        case Alignment::P2PlaneICP:
+            icp_ = std::make_unique<Icp3DIncP2Plane>();
+            alignment_type += "P2PlaneICP";
+            break;
+        case Alignment::NDT:
+            alignment_type += "NDT";
+            break;
+        case Alignment::LoamLike:
+            alignment_type += "LoamLike";
+            break;
+        default:
+            break;
+    }
+
     if (options_.with_ui_) {
-        ui_ = std::make_shared<ui::PangolinWindow>();
+        ui_ = std::make_shared<ui::PangolinWindow>(alignment_type);
         ui_->Init();
     }
 
@@ -45,18 +69,14 @@ void LioIEKF::ProcessMeasurements(const MeasureGroup &meas) {
     measures_ = meas;
 
     if (imu_need_init_) {
-        // 初始化IMU系统
         TryInitIMU();
         return;
     }
 
-    // 利用IMU数据进行状态预测
     Predict();
 
-    // 对点云去畸变
     Undistort();
 
-    // 配准
     Align();
 }
 
@@ -77,6 +97,75 @@ bool LioIEKF::LoadFromYAML(const std::string &yaml_file) {
 }
 
 void LioIEKF::Align() {
+    switch (options_.alignment_) {
+        case Alignment::NDT:
+            AlignWithNdt();
+            break;
+        case Alignment::P2PICP:
+        case Alignment::P2LineICP:
+        case Alignment::P2PlaneICP:
+            AlignWithICP();
+            break;
+        case Alignment::LoamLike:
+            AlignWithLoamLike();
+            break;
+        default:
+            LOG(ERROR) << "Invalid alignment method: " << static_cast<uint32_t>(options_.alignment_);
+            break;
+    }
+}
+
+void LioIEKF::AlignWithICP() {
+    FullCloudPtr scan_undistort_trans(new FullPointCloudType);
+    pcl::transformPointCloud(*scan_undistort_, *scan_undistort_trans, TIL_.matrix().cast<float>());
+    scan_undistort_ = scan_undistort_trans;
+    current_scan_ = ConvertToCloud<FullPointType>(scan_undistort_);
+
+    /// the first scan
+    if (flg_first_scan_) {
+        icp_->AddCloud(current_scan_);
+        flg_first_scan_ = false;
+        return;
+    }
+
+    LOG(INFO) << "=== frame " << frame_num_;
+
+    pcl::VoxelGrid<PointType> voxel;
+    voxel.setLeafSize(0.5, 0.5, 0.5);
+    voxel.setInputCloud(current_scan_);
+
+    CloudPtr current_scan_filter(new PointCloudType);
+    voxel.filter(*current_scan_filter);
+
+    icp_->SetSource(current_scan_filter);
+    ieskf_.UpdateUsingCustomObserve([this](const SE3 &input_pose, Mat18d &HTVH, Vec18d &HTVr) {
+        icp_->ComputeResidualAndJacobians(input_pose, HTVH, HTVr);
+    });
+
+    auto current_nav_state = ieskf_.GetNominalState();
+
+    // add to local map if we move forward a bit
+    SE3 current_pose = ieskf_.GetNominalSE3();
+    SE3 delta_pose = last_pose_.inverse() * current_pose;
+
+    if (delta_pose.translation().norm() > 1.0 || delta_pose.so3().log().norm() > math::deg2rad(10.0)) {
+        CloudPtr current_scan_world(new PointCloudType);
+        pcl::transformPointCloud(*current_scan_filter, *current_scan_world, current_pose.matrix());
+        icp_->AddCloud(current_scan_world);
+        last_pose_ = current_pose;
+    }
+
+    if (ui_) {
+        ui_->UpdateScan(current_scan_, current_nav_state.GetSE3());
+        ui_->UpdateNavState(current_nav_state);
+    }
+
+    frame_num_++;
+}
+
+void LioIEKF::AlignWithLoamLike() {}
+
+void LioIEKF::AlignWithNdt() {
     FullCloudPtr scan_undistort_trans(new FullPointCloudType);
     pcl::transformPointCloud(*scan_undistort_, *scan_undistort_trans, TIL_.matrix().cast<float>());
     scan_undistort_ = scan_undistort_trans;

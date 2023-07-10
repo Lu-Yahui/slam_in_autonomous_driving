@@ -26,7 +26,7 @@ class PangolinWindowImpl {
    public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-    PangolinWindowImpl() = default;
+    PangolinWindowImpl(const std::string &info = "") : info_(info) {}
     ~PangolinWindowImpl() = default;
 
     PangolinWindowImpl(const PangolinWindowImpl &) = delete;
@@ -118,6 +118,7 @@ class PangolinWindowImpl {
     bool following_loc_ = true;  // 相机是否追踪定位结果
 
     // text
+    std::string info_;
     pangolin::GlText gltext_label_global_;
 
     // camera

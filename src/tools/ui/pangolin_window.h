@@ -20,7 +20,7 @@ class PangolinWindow {
    public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-    PangolinWindow();
+    explicit PangolinWindow(const std::string& info = "");
     ~PangolinWindow();
 
     /// @brief 初始化窗口，后台启动render线程。
