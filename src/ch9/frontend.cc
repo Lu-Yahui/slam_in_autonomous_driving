@@ -28,7 +28,10 @@ bool Frontend::Init() {
     system("rm -rf ./data/ch9/*.pcd");
     system("rm -rf ./data/ch9/keyframes.txt");
 
+    uint32_t lo_alignment_type = yaml["frontend"]["lo_align_type"].as<uint32_t>();
+    LOG(INFO) << "Frontend Lidar Odom Alignment Type: " << lo_alignment_type;
     LioIEKF::Options options;
+    options.alignment_ = static_cast<LioIEKF::Alignment>(lo_alignment_type);
     options.with_ui_ = false;  // 跑建图不需要打开前端UI
     lio_ = std::make_shared<LioIEKF>(options);
     lio_->Init(lio_yaml_);

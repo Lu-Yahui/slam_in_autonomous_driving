@@ -35,3 +35,5 @@ mapping:
 point_filter_num: 3
 max_iteration: 10
 imu_has_gravity: true
+frontend:
+  lo_align_type: 1
