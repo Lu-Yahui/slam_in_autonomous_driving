@@ -12,7 +12,7 @@ namespace sad {
 class Icp3DIncBase {
    public:
     struct Options {
-        int max_point_cloud_ = 5;
+        int max_point_cloud_ = 3;
         double max_nn_distance_ = 1.0;
         double max_plane_distance_ = 0.05;
         double max_line_distance_ = 0.5;
