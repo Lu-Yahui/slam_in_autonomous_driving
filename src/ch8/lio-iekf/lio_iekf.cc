@@ -121,6 +121,10 @@ void LioIEKF::AlignWithICP() {
     scan_undistort_ = scan_undistort_trans;
     current_scan_ = ConvertToCloud<FullPointType>(scan_undistort_);
 
+    if (options_.remove_ground) {
+        sad::RemoveGround(current_scan_, options_.ground_height);
+    }
+
     /// the first scan
     if (flg_first_scan_) {
         icp_->AddCloud(current_scan_);

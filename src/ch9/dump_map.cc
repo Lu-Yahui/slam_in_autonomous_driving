@@ -13,8 +13,8 @@ DEFINE_string(dump_to, "./data/ch9/", "导出的目标路径");
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
 
-#include "keyframe.h"
 #include "common/point_cloud_utils.h"
+#include "keyframe.h"
 
 /**
  * 将keyframes.txt中的地图和点云合并为一个pcd
@@ -80,6 +80,11 @@ int main(int argc, char** argv) {
 
     if (!global_cloud->empty()) {
         sad::SaveCloudToFile(FLAGS_dump_to + "/map.pcd", *global_cloud);
+        std::ofstream ofs(FLAGS_dump_to + "/map.xyz");
+        for (uint64_t i = 0UL; i < global_cloud->points.size(); ++i) {
+            ofs << global_cloud->points[i].x << " " << global_cloud->points[i].y << " " << global_cloud->points[i].z
+                << "\n";
+        }
     }
 
     LOG(INFO) << "done.";

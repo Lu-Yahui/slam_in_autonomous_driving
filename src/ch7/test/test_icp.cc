@@ -240,7 +240,7 @@ int main(int argc, char** argv) {
             sad::SaveCloudToFile("./data/ch7/pcl_icp_trans.pcd", *output_pcl);
 
             // 计算GT pose差异
-            double pose_error = (gt_pose.inverse() * T.inverse().cast<double>()).log().norm();
+            double pose_error = (gt_pose.inverse() * T.cast<double>()).log().norm();
             LOG(INFO) << "ICP PCL pose error: " << pose_error;
         },
         "ICP PCL", 1);
@@ -262,7 +262,7 @@ int main(int argc, char** argv) {
             LOG(INFO) << "score: " << ndt_pcl.getTransformationProbability();
 
             // 计算GT pose差异
-            double pose_error = (gt_pose.inverse() * T.inverse().cast<double>()).log().norm();
+            double pose_error = (gt_pose.inverse() * T.cast<double>()).log().norm();
             LOG(INFO) << "NDT PCL pose error: " << pose_error;
         },
         "NDT PCL", 1);
