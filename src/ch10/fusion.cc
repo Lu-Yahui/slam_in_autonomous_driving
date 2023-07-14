@@ -30,7 +30,8 @@ bool Fusion::Init() {
         lidar_loc_ang_noise_ = yaml["offline_fusion"]["lidar_loc_ang_noise"].as<double>();
         rtk_search_min_score_ = yaml["loop_closing"]["homebrew_ndt_score_th"].as<double>();
         display_point_cloud_ = yaml["offline_fusion"]["display_point_cloud"].as<bool>();
-
+        display_voxel_ = yaml["offline_fusion"]["display_voxel"].as<bool>();
+        voxel_resolution_ = yaml["offline_fusion"]["voxel_resolution"].as<double>();
         ndt_data_path_ = yaml["offline_fusion"]["ndt_map_data"].as<std::string>();
         ndt_map_resolutions_ = yaml["offline_fusion"]["resolutions"].as<std::vector<int>>();
 
@@ -41,7 +42,7 @@ bool Fusion::Init() {
         }
 
         Ndt3d::Options options{};
-        options.voxel_size_ = 1.0;
+        options.voxel_size_ = voxel_resolution_;
         homebrew_ndt_ = std::make_unique<Ndt3d>(options);
     }
 
@@ -296,7 +297,7 @@ bool Fusion::LidarLocalization() {
     SE3 pred = eskf_.GetNominalSE3();
 
     if (use_ndt_map_) {
-        LoadNdtMap(pred, 1.0);
+        LoadNdtMap(pred, voxel_resolution_);
         if (display_point_cloud_) {
             LoadMap(pred);
         }
@@ -376,7 +377,6 @@ void Fusion::LoadMap(const SE3& pose) {
         if (!use_ndt_map_) {
             ndt_.setInputTarget(ref_cloud_);
         }
-        // homebrew_ndt_->SetTarget(ref_cloud_);
     }
 
     ui_->UpdatePointCloudGlobal(map_data_);
@@ -437,12 +437,17 @@ void Fusion::LoadNdtMap(const SE3& pose, double resolution) {
         }
         homebrew_ndt_->SetTarget(merged_ndt_voxels);
 
-        std::unordered_map<Eigen::Matrix<int, 3, 1>, std::pair<Eigen::Vector3d, Eigen::Matrix3d>, hash_vec<3>>
-            ui_voxels;
-        for (const auto& kv : merged_ndt_voxels) {
-            ui_voxels[kv.first] = {kv.second.mu_, kv.second.sigma_};
+        if (display_voxel_) {
+            std::unordered_map<Vec2i, std::vector<MeanCov3d>, hash_vec<2>> ui_voxels;
+            for (const auto& kv : ndt_map_data) {
+                const auto& key_2d = kv.first;
+                const auto& voxel_table = kv.second;
+                for (const auto& p : voxel_table) {
+                    ui_voxels[key_2d].push_back(MeanCov3d{p.second.mu_, p.second.sigma_});
+                }
+            }
+            ui_->UpdateNdtVoxelGlobal(ui_voxels);
         }
-        ui_->UpdateNdtVoxelGlobal(ui_voxels);
     }
 }
 

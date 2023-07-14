@@ -31,9 +31,7 @@ class PangolinWindow {
     /// 更新激光地图点云，在激光定位中的地图发生改变时，由fusion调用
     void UpdatePointCloudGlobal(const std::map<Vec2i, CloudPtr, less_vec<2>>& cloud);
 
-    void UpdateNdtVoxelGlobal(
-        const std::unordered_map<Eigen::Matrix<int, 3, 1>, std::pair<Eigen::Vector3d, Eigen::Matrix3d>, hash_vec<3>>&
-            voxels);
+    void UpdateNdtVoxelGlobal(const std::unordered_map<Vec2i, std::vector<MeanCov3d>, hash_vec<2>>& voxels);
 
     /// 更新kalman滤波器状态
     void UpdateNavState(const NavStated& state);

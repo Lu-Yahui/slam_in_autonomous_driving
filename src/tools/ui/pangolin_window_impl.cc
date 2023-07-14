@@ -1,4 +1,5 @@
 #include <glog/logging.h>
+#include <pcl/common/transforms.h>
 #include <string>
 #include <thread>
 
@@ -8,6 +9,53 @@
 #include "common/math_utils.h"
 
 namespace sad::ui {
+namespace {
+
+CloudPtr MakeCovEllipsoidPoints(const MeanCov3d &mean_cov, int n_stddev = 1, int n_theta = 4, int n_phi = 8) {
+    const auto &mean = mean_cov.mean;
+    const auto &cov = mean_cov.cov;
+
+    Eigen::EigenSolver<Eigen::Matrix3d> s(cov);
+    Eigen::Vector3d eig_vals = s.eigenvalues().real();
+    Eigen::Matrix3d eig_vecs = s.eigenvectors().real();
+
+    double rx = static_cast<double>(n_stddev) * std::sqrt(eig_vals.x());
+    double ry = static_cast<double>(n_stddev) * std::sqrt(eig_vals.y());
+    double rz = static_cast<double>(n_stddev) * std::sqrt(eig_vals.z());
+
+    double theta_step = M_PI / static_cast<double>(n_theta);
+    double phi_step = 2.0 * M_PI / static_cast<double>(n_phi);
+
+    CloudPtr cloud(new PointCloudType);
+    cloud->width = n_theta * n_phi;
+    cloud->height = 1;
+    cloud->is_dense = false;
+    cloud->points.resize(cloud->width * cloud->height);
+    int index = 0;
+    for (int i = 0; i < n_theta; ++i) {
+        double theta = theta_step * static_cast<double>(i);
+        double sin_theta = std::sin(theta);
+        double cos_theta = std::cos(theta);
+        for (int j = 0; j < n_phi; ++j) {
+            double phi = phi_step * static_cast<double>(j);
+            Eigen::Vector3d p;
+            p.x() = rx * sin_theta * std::cos(phi);
+            p.y() = ry * sin_theta * std::sin(phi);
+            p.z() = rz * cos_theta;
+
+            Eigen::Vector3d p_trans = eig_vecs * p + mean;
+
+            cloud->points[index].x = p_trans.x();
+            cloud->points[index].y = p_trans.y();
+            cloud->points[index].z = p_trans.z();
+            ++index;
+        }
+    }
+
+    return cloud;
+}
+
+}  // namespace
 
 using UL = std::unique_lock<std::mutex>;
 
@@ -85,21 +133,15 @@ bool PangolinWindowImpl::UpdateNdtVoxels() {
             continue;
         }
 
-        const auto &mu = kv.second.first;
-        const auto &cov = kv.second.second;
-
-        CloudPtr cloud(new PointCloudType);
-        cloud->width = 1;
-        cloud->height = 1;
-        cloud->is_dense = false;
-        cloud->points.resize(cloud->width * cloud->height);
-        cloud->points[0].x = mu.x();
-        cloud->points[0].y = mu.y();
-        cloud->points[0].z = mu.z();
-
+        const auto &mean_cov_list = kv.second;
+        CloudPtr cloud_all(new PointCloudType);
+        for (const auto &mean_cov : mean_cov_list) {
+            auto cloud = MakeCovEllipsoidPoints(mean_cov);
+            *cloud_all += *cloud;
+        }
         std::shared_ptr<ui::UiCloud> ui_cloud(new ui::UiCloud);
-        ui_cloud->SetCloud(cloud, SE3());
-        ui_cloud->SetRenderColor(ui::UiCloud::UseColor::HEIGHT_COLOR);
+        ui_cloud->SetCloud(cloud_all, SE3());
+        ui_cloud->SetRenderColor(ui::UiCloud::UseColor::GRAY_COLOR);
         ndt_voxels_ui_.emplace(kv.first, ui_cloud);
     }
 
@@ -177,6 +219,10 @@ bool PangolinWindowImpl::UpdateGps() {
 void PangolinWindowImpl::DrawAll() {
     for (const auto &pc : cloud_map_ui_) {
         pc.second->Render();
+    }
+
+    for (const auto &voxel : ndt_voxels_ui_) {
+        voxel.second->Render();
     }
 
     for (const auto &s : scans_) {

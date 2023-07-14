@@ -70,7 +70,7 @@ class PangolinWindowImpl {
     // 地图点云
     std::map<Vec2i, CloudPtr, less_vec<2>> cloud_global_map_;
 
-    std::unordered_map<Eigen::Matrix<int, 3, 1>, std::pair<Eigen::Vector3d, Eigen::Matrix3d>, hash_vec<3>> ndt_voxels_;
+    std::unordered_map<Vec2i, std::vector<MeanCov3d>, hash_vec<2>> ndt_voxels_;
 
     /// gps
     SE3 gps_pose_;
@@ -130,11 +130,11 @@ class PangolinWindowImpl {
     pangolin::OpenGlRenderState s_cam_main_;
 
     /// cloud rendering
-    ui::UiCar car_{Vec3f(0.2, 0.2, 0.8)};                                       // 白色车
-    std::map<Vec2i, std::shared_ptr<ui::UiCloud>, less_vec<2>> cloud_map_ui_;   // 用来渲染的点云地图
-    std::shared_ptr<ui::UiCloud> current_scan_ui_;                              // current scan
-    std::deque<std::shared_ptr<ui::UiCloud>> scans_;                            // current scan 保留的队列
-    std::map<Vec3i, std::shared_ptr<ui::UiCloud>, less_vec<3>> ndt_voxels_ui_;  // 用来渲染的点云地图
+    ui::UiCar car_{Vec3f(0.2, 0.2, 0.8)};                                      // 白色车
+    std::map<Vec2i, std::shared_ptr<ui::UiCloud>, less_vec<2>> cloud_map_ui_;  // 用来渲染的点云地图
+    std::shared_ptr<ui::UiCloud> current_scan_ui_;                             // current scan
+    std::deque<std::shared_ptr<ui::UiCloud>> scans_;                           // current scan 保留的队列
+    std::map<Vec2i, std::shared_ptr<ui::UiCloud>, less_vec<2>> ndt_voxels_ui_;
 
     /// ui绘制中使用的一些中间变量
     SE3 T_map_odom_for_lio_traj_ui_;      // 用于显示lio的轨迹

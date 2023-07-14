@@ -119,6 +119,14 @@ inline SE3 Mat4ToSE3(const Eigen::Matrix<S, 4, 4>& m) {
     return SE3(q, m.template block<3, 1>(0, 3).template cast<double>());
 }
 
+template <typename T, int D>
+struct MeanCov {
+    Eigen::Matrix<T, D, 1> mean;
+    Eigen::Matrix<T, D, D> cov;
+};
+
+using MeanCov3d = MeanCov<double, 3>;
+
 }  // namespace sad
 
 #endif  // MAPPING_EIGEN_TYPES_H

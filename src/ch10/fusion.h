@@ -131,6 +131,8 @@ class Fusion {
     std::unique_ptr<Ndt3d> homebrew_ndt_;
     bool use_ndt_map_ = false;
     bool display_point_cloud_ = false;
+    bool display_voxel_ = false;
+    double voxel_resolution_ = 1.0;
     std::string ndt_data_path_;
     std::vector<int> ndt_map_resolutions_;
     // key: resolution, value: index

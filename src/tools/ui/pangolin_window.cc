@@ -41,8 +41,7 @@ void PangolinWindow::UpdatePointCloudGlobal(const std::map<Vec2i, CloudPtr, less
 }
 
 void PangolinWindow::UpdateNdtVoxelGlobal(
-    const std::unordered_map<Eigen::Matrix<int, 3, 1>, std::pair<Eigen::Vector3d, Eigen::Matrix3d>, hash_vec<3>>&
-        voxels) {
+    const std::unordered_map<Vec2i, std::vector<MeanCov3d>, hash_vec<2>>& voxels) {
     std::lock_guard<std::mutex> lock(impl_->mtx_ndt_voxels_);
     impl_->ndt_voxels_ = voxels;
     impl_->ndt_voxels_need_update_.store(true);

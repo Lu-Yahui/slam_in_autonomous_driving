@@ -46,3 +46,5 @@ offline_fusion:
   lidar_loc_trans_noise: 0.01
   lidar_loc_ang_noise: 0.001
   display_point_cloud: false
+  display_voxel: true
+  voxel_resolution: 1.0
