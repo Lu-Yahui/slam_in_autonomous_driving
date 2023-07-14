@@ -36,7 +36,7 @@ class LioIEKF {
         bool save_motion_undistortion_pcd_ = false;  // 是否保存去畸变前后的点云
         bool with_ui_ = true;                        // 是否带着UI
         Alignment alignment_ = Alignment::NDT;
-        bool remove_ground = true;
+        bool remove_ground = false;
         double ground_height = 0.2;
     };
 

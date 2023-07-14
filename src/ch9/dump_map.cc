@@ -2,12 +2,14 @@
 // Created by xiang on 22-12-7.
 //
 
+#include <ch7/ndt_3d.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
 DEFINE_double(voxel_size, 0.1, "导出地图分辨率");
 DEFINE_string(pose_source, "lidar", "使用的pose来源:lidar/rtk/opti1/opti2");
 DEFINE_string(dump_to, "./data/ch9/", "导出的目标路径");
+DEFINE_bool(dump_ndt_map, true, "dump NDT map");
 
 #include <pcl/common/transforms.h>
 #include <pcl/filters/voxel_grid.h>
@@ -80,10 +82,35 @@ int main(int argc, char** argv) {
 
     if (!global_cloud->empty()) {
         sad::SaveCloudToFile(FLAGS_dump_to + "/map.pcd", *global_cloud);
+
+        // dump xyz for meshlab
         std::ofstream ofs(FLAGS_dump_to + "/map.xyz");
         for (uint64_t i = 0UL; i < global_cloud->points.size(); ++i) {
             ofs << global_cloud->points[i].x << " " << global_cloud->points[i].y << " " << global_cloud->points[i].z
                 << "\n";
+        }
+
+        // dump NDT map
+        if (FLAGS_dump_ndt_map) {
+            LOG(INFO) << "Building NDT map...";
+            const std::vector<int> res = {10, 5, 4, 3, 1};
+            for (const auto& r : res) {
+                sad::Ndt3d::Options options{};
+                options.voxel_size_ = static_cast<double>(r);
+                sad::Ndt3d ndt(options);
+                ndt.SetTarget(global_cloud);
+                LOG(INFO) << "Saving NDT map, resolution: " << r;
+                std::ofstream ndt_ofs(FLAGS_dump_to + "/ndt_map_" + std::to_string(r) + ".txt");
+                for (const auto& kv : ndt.GetVoxels()) {
+                    const auto& voxel_data = kv.second;
+                    // clang-format off
+                    ndt_ofs << voxel_data.mu_.x() << " " << voxel_data.mu_.y() << " " << voxel_data.mu_.z() << " "
+                            << voxel_data.info_(0,0) << " " << voxel_data.info_(0,1) << " " << voxel_data.info_(0,2) << " "
+                                                            << voxel_data.info_(1,1) << " " << voxel_data.info_(1,2) << " "
+                                                                                            << voxel_data.info_(2,2) << "\n";
+                    // clang-format on
+                }
+            }
         }
     }
 

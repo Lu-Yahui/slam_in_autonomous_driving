@@ -29,6 +29,8 @@ class Ndt3d {
         double eps_ = 1e-2;             // 收敛判定条件
         double res_outlier_th_ = 20.0;  // 异常值拒绝阈值
         bool remove_centroid_ = false;  // 是否计算两个点云中心并移除中心？
+        double outlier_ratio_ = 0.55;
+        bool print_opti_progress = false;
 
         NearbyType nearby_type_ = NearbyType::NEARBY6;
     };
@@ -47,11 +49,17 @@ class Ndt3d {
     Ndt3d() {
         options_.inv_voxel_size_ = 1.0 / options_.voxel_size_;
         GenerateNearbyGrids();
+        ComputeTransProbFactors();
     }
 
     Ndt3d(Options options) : options_(options) {
         options_.inv_voxel_size_ = 1.0 / options_.voxel_size_;
         GenerateNearbyGrids();
+        ComputeTransProbFactors();
+    }
+
+    void SetTarget(const std::unordered_map<Ndt3d::KeyType, Ndt3d::VoxelData, hash_vec<3>>& target_voxels) {
+        grids_ = target_voxels;
     }
 
     /// 设置目标的Scan
@@ -82,11 +90,17 @@ class Ndt3d {
     /// 使用gauss-newton方法进行ndt配准
     bool AlignNdt(SE3& init_pose);
 
+    double GetTransformationProbability() { return trans_likelihood_; }
+
+    const std::unordered_map<KeyType, VoxelData, hash_vec<3>>& GetVoxels() const { return grids_; }
+
    private:
     void BuildVoxels();
 
     /// 根据最近邻的类型，生成附近网格
     void GenerateNearbyGrids();
+
+    void ComputeTransProbFactors();
 
     CloudPtr target_ = nullptr;
     CloudPtr source_ = nullptr;
@@ -101,7 +115,15 @@ class Ndt3d {
 
     std::unordered_map<KeyType, VoxelData, hash_vec<3>> grids_;  // 栅格数据
     std::vector<KeyType> nearby_grids_;                          // 附近的栅格
+
+    // for transformation probability computation purpose
+    double trans_likelihood_ = 0.0;
+    double gauss_d1_;
+    double gauss_d2_;
 };
+
+std::unordered_map<Ndt3d::KeyType, Ndt3d::VoxelData, hash_vec<3>> LoadNdtVoxels(const std::string& filename,
+                                                                                double voxel_res = 1.0);
 
 }  // namespace sad
 

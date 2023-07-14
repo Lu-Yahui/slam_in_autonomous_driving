@@ -11,6 +11,7 @@
 #include <yaml-cpp/yaml.h>
 #include <execution>
 
+#include "ch7/ndt_3d.h"
 #include "common/lidar_utils.h"
 #include "common/point_cloud_utils.h"
 
@@ -29,7 +30,12 @@ bool LoopClosure::Init() {
     min_id_interval_ = yaml["loop_closing"]["min_id_interval"].as<int>();
     min_distance_ = yaml["loop_closing"]["min_distance"].as<double>();
     skip_id_ = yaml["loop_closing"]["skip_id"].as<int>();
-    ndt_score_th_ = yaml["loop_closing"]["ndt_score_th"].as<double>();
+    use_pcl_ndt_ = yaml["loop_closing"]["use_pcl_ndt"].as<bool>();
+    if (use_pcl_ndt_) {
+        ndt_score_th_ = yaml["loop_closing"]["pcl_ndt_score_th"].as<double>();
+    } else {
+        ndt_score_th_ = yaml["loop_closing"]["homebrew_ndt_score_th"].as<double>();
+    }
     return true;
 }
 
@@ -90,7 +96,9 @@ void LoopClosure::ComputeLoopCandidates() {
                   [this](LoopCandidate& c) { ComputeForCandidate(c); });
     // 保存成功的候选
     std::vector<LoopCandidate> succ_candidates;
+    std::ofstream ofs("./data/ch9/scores.txt");
     for (const auto& lc : loop_candiates_) {
+        ofs << lc.ndt_score_ << "\n";
         if (lc.ndt_score_ > ndt_score_th_) {
             succ_candidates.emplace_back(lc);
         }
@@ -151,26 +159,14 @@ void LoopClosure::ComputeForCandidate(sad::LoopCandidate& c) {
         return;
     }
 
-    pcl::NormalDistributionsTransform<PointType, PointType> ndt;
-
-    ndt.setTransformationEpsilon(0.05);
-    ndt.setStepSize(0.7);
-    ndt.setMaximumIterations(40);
-
     Mat4f Tw2 = kf2->opti_pose_1_.matrix().cast<float>();
-
-    /// 不同分辨率下的匹配
-    CloudPtr output(new PointCloudType);
     std::vector<double> res{10.0, 5.0, 4.0, 3.0};
-    for (auto& r : res) {
-        ndt.setResolution(r);
-        auto rough_map1 = VoxelCloud(submap_kf1, r * 0.1);
-        auto rough_map2 = VoxelCloud(submap_kf2, r * 0.1);
-        ndt.setInputTarget(rough_map1);
-        ndt.setInputSource(rough_map2);
 
-        ndt.align(*output, Tw2);
-        Tw2 = ndt.getFinalTransformation();
+    double ndt_score = 0.0;
+    if (use_pcl_ndt_) {
+        AlignWithPclNdt(res, submap_kf1, submap_kf2, Tw2, ndt_score);
+    } else {
+        AlignWithHomeBrewNdt(res, submap_kf1, submap_kf2, Tw2, ndt_score);
     }
 
     Mat4d T = Tw2.cast<double>();
@@ -178,7 +174,7 @@ void LoopClosure::ComputeForCandidate(sad::LoopCandidate& c) {
     q.normalize();
     Vec3d t = T.block<3, 1>(0, 3);
     c.Tij_ = kf1->opti_pose_1_.inverse() * SE3(q, t);
-    c.ndt_score_ = ndt.getTransformationProbability();
+    c.ndt_score_ = ndt_score;
 }
 
 void LoopClosure::SaveResults() {
@@ -194,6 +190,53 @@ void LoopClosure::SaveResults() {
         save_SE3(fout, lc.Tij_);
         fout << std::endl;
     }
+}
+
+void LoopClosure::AlignWithPclNdt(const std::vector<double>& res, CloudPtr submap_kf1, CloudPtr submap_kf2, Mat4f& Tw2,
+                                  double& ndt_score) {
+    pcl::NormalDistributionsTransform<PointType, PointType> ndt;
+    ndt.setTransformationEpsilon(0.05);
+    ndt.setStepSize(0.7);
+    ndt.setMaximumIterations(40);
+
+    CloudPtr output(new PointCloudType);
+    for (auto& r : res) {
+        ndt.setResolution(r);
+        auto rough_map1 = VoxelCloud(submap_kf1, r * 0.1);
+        auto rough_map2 = VoxelCloud(submap_kf2, r * 0.1);
+        ndt.setInputTarget(rough_map1);
+        ndt.setInputSource(rough_map2);
+
+        ndt.align(*output, Tw2);
+        Tw2 = ndt.getFinalTransformation();
+    }
+
+    ndt_score = ndt.getTransformationProbability();
+}
+
+void LoopClosure::AlignWithHomeBrewNdt(const std::vector<double>& res, CloudPtr submap_kf1, CloudPtr submap_kf2,
+                                       Mat4f& Tw2, double& ndt_score) {
+    Mat4d T = Tw2.cast<double>();
+    Quatd q(T.block<3, 3>(0, 0));
+    q.normalize();
+    Vec3d t = T.block<3, 1>(0, 3);
+    SE3 se3(q, t);
+
+    for (const auto& r : res) {
+        auto rough_map1 = VoxelCloud(submap_kf1, r * 0.1);
+        auto rough_map2 = VoxelCloud(submap_kf2, r * 0.1);
+
+        Ndt3d::Options options{};
+        options.voxel_size_ = r;
+        Ndt3d ndt(options);
+        ndt.SetTarget(rough_map1);
+        ndt.SetSource(rough_map2);
+
+        ndt.AlignNdt(se3);
+        ndt_score = ndt.GetTransformationProbability();
+    }
+
+    Tw2 = se3.matrix().cast<float>();
 }
 
 }  // namespace sad

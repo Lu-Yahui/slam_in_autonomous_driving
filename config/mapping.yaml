@@ -18,7 +18,9 @@ loop_closing:
   min_id_interval: 100
   min_distance: 30
   skip_id: 5
-  ndt_score_th: 4.5
+  pcl_ndt_score_th: 4.5
+  homebrew_ndt_score_th: 0.11
+  use_pcl_ndt: false
 common:
   dataset: nclt
   lid_topic: points_raw
@@ -36,4 +38,11 @@ point_filter_num: 3
 max_iteration: 10
 imu_has_gravity: true
 frontend:
-  lo_align_type: 1
+  lo_align_type: 3
+offline_fusion:
+  use_ndt_map: true
+  ndt_map_data: "./data/ch9/ndt_map_data/"
+  resolutions: [10, 5, 4, 3, 1]
+  lidar_loc_trans_noise: 0.01
+  lidar_loc_ang_noise: 0.001
+  display_point_cloud: false

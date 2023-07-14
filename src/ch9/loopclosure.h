@@ -45,12 +45,19 @@ class LoopClosure {
     /// 保存计算结果
     void SaveResults();
 
+    void AlignWithPclNdt(const std::vector<double>& res, CloudPtr submap_kf1, CloudPtr submap_kf2, Mat4f& Tw2,
+                         double& ndt_score);
+
+    void AlignWithHomeBrewNdt(const std::vector<double>& res, CloudPtr submap_kf1, CloudPtr submap_kf2, Mat4f& Tw2,
+                              double& ndt_score);
+
     /// params
     std::vector<LoopCandidate> loop_candiates_;
     int min_id_interval_ = 50;   // 被选为候选的两个关键帧之间的ID差值
     double min_distance_ = 30;   // 候选帧之间的最小距离
     int skip_id_ = 5;            // 如果选择了一个候选帧，那么隔开多少个ID之后再选一个
     double ndt_score_th_ = 2.5;  // 有效回环的NDT分值阈值
+    bool use_pcl_ndt_ = false;
 
     std::map<IdType, KFPtr> keyframes_;
 

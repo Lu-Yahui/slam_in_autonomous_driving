@@ -74,6 +74,47 @@ bool PangolinWindowImpl::UpdateGlobalMap() {
     return true;
 }
 
+bool PangolinWindowImpl::UpdateNdtVoxels() {
+    if (!ndt_voxels_need_update_.load()) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mtx_ndt_voxels_);
+    for (const auto &kv : ndt_voxels_) {
+        if (ndt_voxels_ui_.find(kv.first) != ndt_voxels_ui_.end()) {
+            continue;
+        }
+
+        const auto &mu = kv.second.first;
+        const auto &cov = kv.second.second;
+
+        CloudPtr cloud(new PointCloudType);
+        cloud->width = 1;
+        cloud->height = 1;
+        cloud->is_dense = false;
+        cloud->points.resize(cloud->width * cloud->height);
+        cloud->points[0].x = mu.x();
+        cloud->points[0].y = mu.y();
+        cloud->points[0].z = mu.z();
+
+        std::shared_ptr<ui::UiCloud> ui_cloud(new ui::UiCloud);
+        ui_cloud->SetCloud(cloud, SE3());
+        ui_cloud->SetRenderColor(ui::UiCloud::UseColor::HEIGHT_COLOR);
+        ndt_voxels_ui_.emplace(kv.first, ui_cloud);
+    }
+
+    for (auto iter = ndt_voxels_ui_.begin(); iter != ndt_voxels_ui_.end();) {
+        if (ndt_voxels_.find(iter->first) == ndt_voxels_.end()) {
+            iter = ndt_voxels_ui_.erase(iter);
+        } else {
+            iter++;
+        }
+    }
+    ndt_voxels_need_update_.store(false);
+
+    return true;
+}
+
 bool PangolinWindowImpl::UpdateCurrentScan() {
     UL lock(mtx_current_scan_);
     if (current_scan_ != nullptr && !current_scan_->empty() && current_scan_need_update_) {
@@ -161,6 +202,7 @@ void PangolinWindowImpl::RenderClouds() {
     UpdateState();
     UpdateGps();
     UpdateCurrentScan();
+    UpdateNdtVoxels();
 
     // 绘制
     pangolin::Display(dis_3d_main_name_).Activate(s_cam_main_);

@@ -7,6 +7,7 @@
 
 #include "ch3/eskf.hpp"
 #include "ch3/static_imu_init.h"
+#include "ch7/ndt_3d.h"
 #include "common/eigen_types.h"
 #include "common/gnss.h"
 #include "common/imu.h"
@@ -49,11 +50,13 @@ class Fusion {
     /// 读取某个点附近的地图
     void LoadMap(const SE3& pose);
 
+    void LoadNdtMap(const SE3& pose, double resolution);
+
     /// 处理同步之后的IMU和雷达数据
     void ProcessMeasurements(const MeasureGroup& meas);
 
     /// 读取地图的索引文件
-    void LoadMapIndex();
+    std::set<Vec2i, less_vec<2>> LoadMapIndex(const std::string& map_index_file);
 
     /// 网格搜索时的结构
     struct GridSearchResult {
@@ -67,6 +70,8 @@ class Fusion {
 
     /// 对网格搜索的某个点进行配准，得到配准后位姿与配准分值
     void AlignForGrid(GridSearchResult& gr);
+
+    void AlignForGridWithHomebrewNdt(sad::Fusion::GridSearchResult& gr);
 
     /// 激光定位
     bool LidarLocalization();
@@ -118,6 +123,20 @@ class Fusion {
 
     /// 参数
     double rtk_search_min_score_ = 4.5;
+    double lidar_loc_trans_noise_ = 1E-2;
+    double lidar_loc_ang_noise_ = 1E-2;
+
+    // ndt map
+    using NdtVoxelMap = std::unordered_map<Ndt3d::KeyType, Ndt3d::VoxelData, hash_vec<3>>;
+    std::unique_ptr<Ndt3d> homebrew_ndt_;
+    bool use_ndt_map_ = false;
+    bool display_point_cloud_ = false;
+    std::string ndt_data_path_;
+    std::vector<int> ndt_map_resolutions_;
+    // key: resolution, value: index
+    std::unordered_map<int, std::set<Vec2i, less_vec<2>>> ndt_map_data_index_table_;
+    // key: resolution, value: voxels
+    std::unordered_map<int, std::map<Vec2i, NdtVoxelMap, less_vec<2>>> ndt_map_data_table_;
 
     // ui
     std::shared_ptr<ui::PangolinWindow> ui_ = nullptr;

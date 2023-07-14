@@ -23,9 +23,32 @@ bool Fusion::Init() {
     auto origin_data = yaml["origin"].as<std::vector<double>>();
     map_origin_ = Vec3d(origin_data[0], origin_data[1], origin_data[2]);
 
+    // load ndt map index, initialize ndt
+    use_ndt_map_ = yaml["offline_fusion"]["use_ndt_map"].as<bool>();
+    if (use_ndt_map_) {
+        lidar_loc_trans_noise_ = yaml["offline_fusion"]["lidar_loc_trans_noise"].as<double>();
+        lidar_loc_ang_noise_ = yaml["offline_fusion"]["lidar_loc_ang_noise"].as<double>();
+        rtk_search_min_score_ = yaml["loop_closing"]["homebrew_ndt_score_th"].as<double>();
+        display_point_cloud_ = yaml["offline_fusion"]["display_point_cloud"].as<bool>();
+
+        ndt_data_path_ = yaml["offline_fusion"]["ndt_map_data"].as<std::string>();
+        ndt_map_resolutions_ = yaml["offline_fusion"]["resolutions"].as<std::vector<int>>();
+
+        for (const auto& r : ndt_map_resolutions_) {
+            LOG(INFO) << "Loading NDT map index, resolution: " << r;
+            std::string ndt_map_index_file = ndt_data_path_ + "res_" + std::to_string(r) + "/ndt_map_index.txt";
+            ndt_map_data_index_table_[r] = LoadMapIndex(ndt_map_index_file);
+        }
+
+        Ndt3d::Options options{};
+        options.voxel_size_ = 1.0;
+        homebrew_ndt_ = std::make_unique<Ndt3d>(options);
+    }
+
+    // we need point cloud map for visualization purpose
     // 地图目录
     data_path_ = yaml["map_data"].as<std::string>();
-    LoadMapIndex();
+    map_data_index_ = LoadMapIndex(data_path_ + "map_index.txt");
 
     // lidar和IMU消息同步
     sync_ = std::make_shared<MessageSync>([this](const MeasureGroup& m) { ProcessMeasurements(m); });
@@ -158,7 +181,15 @@ bool Fusion::SearchRTK() {
 
     // 由于RTK不带姿态，我们必须先搜索一定的角度范围
     std::vector<GridSearchResult> search_poses;
-    LoadMap(last_gnss_->utm_pose_);
+    if (!use_ndt_map_ || (use_ndt_map_ && display_point_cloud_)) {
+        LoadMap(last_gnss_->utm_pose_);
+    }
+
+    if (use_ndt_map_) {
+        for (const auto& r : ndt_map_resolutions_) {
+            LoadNdtMap(last_gnss_->utm_pose_, static_cast<double>(r));
+        }
+    }
 
     /// 由于RTK不带角度，这里按固定步长扫描RTK角度
     double grid_ang_range = 360.0, grid_ang_step = 10;  // 角度搜索范围与步长
@@ -170,8 +201,13 @@ bool Fusion::SearchRTK() {
     }
 
     LOG(INFO) << "grid search poses: " << search_poses.size();
-    std::for_each(std::execution::par_unseq, search_poses.begin(), search_poses.end(),
-                  [this](GridSearchResult& gr) { AlignForGrid(gr); });
+    std::for_each(std::execution::par_unseq, search_poses.begin(), search_poses.end(), [this](GridSearchResult& gr) {
+        if (use_ndt_map_) {
+            AlignForGridWithHomebrewNdt(gr);
+        } else {
+            AlignForGrid(gr);
+        }
+    });
 
     // 选择最优的匹配结果
     auto max_ele = std::max_element(search_poses.begin(), search_poses.end(),
@@ -226,19 +262,63 @@ void Fusion::AlignForGrid(sad::Fusion::GridSearchResult& gr) {
     gr.result_pose_ = Mat4ToSE3(ndt.getFinalTransformation());
 }
 
+void Fusion::AlignForGridWithHomebrewNdt(sad::Fusion::GridSearchResult& gr) {
+    auto pose = gr.pose_;
+    for (const auto& r : ndt_map_resolutions_) {
+        Ndt3d::Options options{};
+        options.voxel_size_ = static_cast<double>(r);
+        Ndt3d ndt(options);
+
+        // set target voxels
+        const auto& iter_ndt_map_data = ndt_map_data_table_.find(r);
+        if (iter_ndt_map_data == ndt_map_data_table_.end()) {
+            continue;
+        }
+
+        NdtVoxelMap merged_ndt_voxels;
+        for (const auto& kv : iter_ndt_map_data->second) {
+            merged_ndt_voxels.insert(kv.second.begin(), kv.second.end());
+        }
+
+        ndt.SetTarget(merged_ndt_voxels);
+        ndt.SetSource(current_scan_);
+        if (!ndt.AlignNdt(pose)) {
+            LOG(WARNING) << "NDT failed with resolution: " << r;
+            gr.score_ = 0.0;
+        } else {
+            gr.score_ = ndt.GetTransformationProbability();
+        }
+    }
+    gr.result_pose_ = pose;
+}
+
 bool Fusion::LidarLocalization() {
     SE3 pred = eskf_.GetNominalSE3();
-    LoadMap(pred);
 
-    ndt_.setInputCloud(current_scan_);
-    CloudPtr output(new PointCloudType);
-    ndt_.align(*output, pred.matrix().cast<float>());
+    if (use_ndt_map_) {
+        LoadNdtMap(pred, 1.0);
+        if (display_point_cloud_) {
+            LoadMap(pred);
+        }
+    }
 
-    SE3 pose = Mat4ToSE3(ndt_.getFinalTransformation());
-    eskf_.ObserveSE3(pose, 1e-1, 1e-2);
+    SE3 pose = pred;
+    if (use_ndt_map_) {
+        homebrew_ndt_->SetSource(current_scan_);
+        if (!homebrew_ndt_->AlignNdt(pose)) {
+            LOG(ERROR) << "Homebrew NDT failed.";
+            return false;
+        }
+        LOG(INFO) << "Homebrew NDT, lidar loc score: " << homebrew_ndt_->GetTransformationProbability();
+    } else {
+        ndt_.setInputCloud(current_scan_);
+        CloudPtr output(new PointCloudType);
+        ndt_.align(*output, pred.matrix().cast<float>());
+        pose = Mat4ToSE3(ndt_.getFinalTransformation());
+        LOG(INFO) << "PCL NDT, lidar loc score: " << ndt_.getTransformationProbability();
+    }
 
-    LOG(INFO) << "lidar loc score: " << ndt_.getTransformationProbability();
-
+    eskf_.ObserveSE3(pose, lidar_loc_trans_noise_, lidar_loc_ang_noise_);
     return true;
 }
 
@@ -293,20 +373,90 @@ void Fusion::LoadMap(const SE3& pose) {
         }
 
         LOG(INFO) << "rebuild global cloud, grids: " << map_data_.size();
-        ndt_.setInputTarget(ref_cloud_);
+        if (!use_ndt_map_) {
+            ndt_.setInputTarget(ref_cloud_);
+        }
+        // homebrew_ndt_->SetTarget(ref_cloud_);
     }
 
     ui_->UpdatePointCloudGlobal(map_data_);
 }
 
-void Fusion::LoadMapIndex() {
-    std::ifstream fin(data_path_ + "/map_index.txt");
+void Fusion::LoadNdtMap(const SE3& pose, double resolution) {
+    const auto& iter_index = ndt_map_data_index_table_.find(static_cast<int>(resolution));
+    if (iter_index == ndt_map_data_index_table_.end()) {
+        LOG(ERROR) << "No NDT map index found for resolution: " << resolution;
+        return;
+    }
+    const auto& ndt_map_data_index = iter_index->second;
+
+    auto& ndt_map_data = ndt_map_data_table_[static_cast<int>(resolution)];
+
+    int gx = floor((pose.translation().x() - 50.0) / 100);
+    int gy = floor((pose.translation().y() - 50.0) / 100);
+    Vec2i key(gx, gy);
+
+    std::set<Vec2i, less_vec<2>> surrounding_index{
+        key + Vec2i(0, 0), key + Vec2i(-1, 0), key + Vec2i(-1, -1), key + Vec2i(-1, 1), key + Vec2i(0, -1),
+        key + Vec2i(0, 1), key + Vec2i(1, 0),  key + Vec2i(1, -1),  key + Vec2i(1, 1),
+    };
+
+    bool map_data_changed = false;
+    int cnt_new_loaded = 0, cnt_unload = 0;
+    for (auto& k : surrounding_index) {
+        if (ndt_map_data_index.find(k) == ndt_map_data_index.end()) {
+            continue;
+        }
+
+        if (ndt_map_data.find(k) == ndt_map_data.end()) {
+            std::string ndt_data_file = ndt_data_path_ + "res_" + std::to_string(static_cast<int>(resolution)) + "/" +
+                                        std::to_string(k[0]) + "_" + std::to_string(k[1]) + ".txt";
+            auto voxels = LoadNdtVoxels(ndt_data_file, resolution);
+            LOG(INFO) << "Loaded: res_" << static_cast<int>(resolution) << "/" << k[0] << "_" << k[1] << ".txt";
+            ndt_map_data.emplace(k, voxels);
+            map_data_changed = true;
+            cnt_new_loaded++;
+        }
+    }
+
+    for (auto iter = ndt_map_data.begin(); iter != ndt_map_data.end();) {
+        if ((iter->first - key).cast<float>().norm() > 3.0) {
+            iter = ndt_map_data.erase(iter);
+            cnt_unload++;
+            map_data_changed = true;
+        } else {
+            iter++;
+        }
+    }
+
+    LOG(INFO) << "NDT map, new loaded: " << cnt_new_loaded << ", unload: " << cnt_unload;
+    if (map_data_changed) {
+        NdtVoxelMap merged_ndt_voxels;
+        for (const auto& kv : ndt_map_data) {
+            merged_ndt_voxels.insert(kv.second.begin(), kv.second.end());
+        }
+        homebrew_ndt_->SetTarget(merged_ndt_voxels);
+
+        std::unordered_map<Eigen::Matrix<int, 3, 1>, std::pair<Eigen::Vector3d, Eigen::Matrix3d>, hash_vec<3>>
+            ui_voxels;
+        for (const auto& kv : merged_ndt_voxels) {
+            ui_voxels[kv.first] = {kv.second.mu_, kv.second.sigma_};
+        }
+        ui_->UpdateNdtVoxelGlobal(ui_voxels);
+    }
+}
+
+std::set<Vec2i, less_vec<2>> Fusion::LoadMapIndex(const std::string& map_index_file) {
+    std::set<Vec2i, less_vec<2>> data_index;
+    std::ifstream fin(map_index_file);
     while (!fin.eof()) {
         int x, y;
         fin >> x >> y;
-        map_data_index_.emplace(Vec2i(x, y));
+        data_index.emplace(Vec2i(x, y));
     }
     fin.close();
+
+    return data_index;
 }
 
 void Fusion::ProcessIMU(IMUPtr imu) { sync_->ProcessIMU(imu); }

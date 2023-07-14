@@ -52,6 +52,7 @@ class PangolinWindowImpl {
     std::mutex mtx_current_scan_;
     std::mutex mtx_nav_state_;
     std::mutex mtx_gps_pose_;
+    std::mutex mtx_ndt_voxels_;
 
     std::atomic<bool> exit_flag_;
 
@@ -61,12 +62,15 @@ class PangolinWindowImpl {
     std::atomic<bool> lidarloc_need_update_;
     std::atomic<bool> pgoloc_need_update_;
     std::atomic<bool> gps_need_update_;
+    std::atomic<bool> ndt_voxels_need_update_;
 
     CloudPtr current_scan_ = nullptr;  // 当前scan
     SE3 current_pose_;                 // 当前scan对应的pose
 
     // 地图点云
     std::map<Vec2i, CloudPtr, less_vec<2>> cloud_global_map_;
+
+    std::unordered_map<Eigen::Matrix<int, 3, 1>, std::pair<Eigen::Vector3d, Eigen::Matrix3d>, hash_vec<3>> ndt_voxels_;
 
     /// gps
     SE3 gps_pose_;
@@ -97,6 +101,7 @@ class PangolinWindowImpl {
     bool UpdateGlobalMap();
     bool UpdateState();
     bool UpdateCurrentScan();
+    bool UpdateNdtVoxels();
 
     void RenderLabels();
 
@@ -125,10 +130,11 @@ class PangolinWindowImpl {
     pangolin::OpenGlRenderState s_cam_main_;
 
     /// cloud rendering
-    ui::UiCar car_{Vec3f(0.2, 0.2, 0.8)};                                      // 白色车
-    std::map<Vec2i, std::shared_ptr<ui::UiCloud>, less_vec<2>> cloud_map_ui_;  // 用来渲染的点云地图
-    std::shared_ptr<ui::UiCloud> current_scan_ui_;                             // current scan
-    std::deque<std::shared_ptr<ui::UiCloud>> scans_;                           // current scan 保留的队列
+    ui::UiCar car_{Vec3f(0.2, 0.2, 0.8)};                                       // 白色车
+    std::map<Vec2i, std::shared_ptr<ui::UiCloud>, less_vec<2>> cloud_map_ui_;   // 用来渲染的点云地图
+    std::shared_ptr<ui::UiCloud> current_scan_ui_;                              // current scan
+    std::deque<std::shared_ptr<ui::UiCloud>> scans_;                            // current scan 保留的队列
+    std::map<Vec3i, std::shared_ptr<ui::UiCloud>, less_vec<3>> ndt_voxels_ui_;  // 用来渲染的点云地图
 
     /// ui绘制中使用的一些中间变量
     SE3 T_map_odom_for_lio_traj_ui_;      // 用于显示lio的轨迹

@@ -8,6 +8,7 @@
 #include <glog/logging.h>
 #include <Eigen/SVD>
 #include <execution>
+#include <fstream>
 
 namespace sad {
 
@@ -94,6 +95,7 @@ bool Ndt3d::AlignNdt(SE3& init_pose) {
         std::vector<Eigen::Matrix<double, 3, 6>> jacobians(total_size);
         std::vector<Vec3d> errors(total_size);
         std::vector<Mat3d> infos(total_size);
+        std::vector<double> scores(total_size, 0.0);
 
         // gauss-newton 迭代
         // 最近邻，可以并发
@@ -103,7 +105,6 @@ bool Ndt3d::AlignNdt(SE3& init_pose) {
 
             // 计算qs所在的栅格以及它的最近邻栅格
             Vec3i key = (qs * options_.inv_voxel_size_).cast<int>();
-
             for (int i = 0; i < nearby_grids_.size(); ++i) {
                 auto key_off = key + nearby_grids_[i];
                 auto it = grids_.find(key_off);
@@ -128,6 +129,13 @@ bool Ndt3d::AlignNdt(SE3& init_pose) {
                     errors[real_idx] = e;
                     infos[real_idx] = v.info_;
                     effect_pts[real_idx] = true;
+
+                    // compute score
+                    double score = -gauss_d1_ * std::exp(-gauss_d2_ * e.dot(v.info_ * e) / 2);
+                    if (score > 1.0 || score < 0.0 || std::isnan(score)) {
+                        score = 0.0;
+                    }
+                    scores[real_idx] = score;
                 } else {
                     effect_pts[real_idx] = false;
                 }
@@ -142,6 +150,7 @@ bool Ndt3d::AlignNdt(SE3& init_pose) {
         Mat6d H = Mat6d::Zero();
         Vec6d err = Vec6d::Zero();
 
+        double score_in_total = 0.0;
         for (int idx = 0; idx < effect_pts.size(); ++idx) {
             if (!effect_pts[idx]) {
                 continue;
@@ -153,7 +162,10 @@ bool Ndt3d::AlignNdt(SE3& init_pose) {
 
             H += jacobians[idx].transpose() * infos[idx] * jacobians[idx];
             err += -jacobians[idx].transpose() * infos[idx] * errors[idx];
+            score_in_total += scores[idx];
         }
+
+        trans_likelihood_ = score_in_total / static_cast<double>(source_->points.size());
 
         if (effective_num < options_.min_effective_pts_) {
             LOG(WARNING) << "effective num too small: " << effective_num;
@@ -164,10 +176,11 @@ bool Ndt3d::AlignNdt(SE3& init_pose) {
         pose.so3() = pose.so3() * SO3::exp(dx.head<3>());
         pose.translation() += dx.tail<3>();
 
-        // 更新
-        LOG(INFO) << "iter " << iter << " total res: " << total_res << ", eff: " << effective_num
-                  << ", mean res: " << total_res / effective_num << ", dxn: " << dx.norm()
-                  << ", dx: " << dx.transpose();
+        if (options_.print_opti_progress) {
+            LOG(INFO) << "iter " << iter << " total res: " << total_res << ", eff: " << effective_num
+                      << ", mean res: " << total_res / effective_num << ", dxn: " << dx.norm()
+                      << ", dx: " << dx.transpose() << ", trans prob: " << trans_likelihood_;
+        }
 
         // std::sort(chi2.begin(), chi2.end());
         // LOG(INFO) << "chi2 med: " << chi2[chi2.size() / 2] << ", .7: " << chi2[chi2.size() * 0.7]
@@ -195,6 +208,57 @@ void Ndt3d::GenerateNearbyGrids() {
         nearby_grids_ = {KeyType(0, 0, 0),  KeyType(-1, 0, 0), KeyType(1, 0, 0), KeyType(0, 1, 0),
                          KeyType(0, -1, 0), KeyType(0, 0, -1), KeyType(0, 0, 1)};
     }
+}
+
+void Ndt3d::ComputeTransProbFactors() {
+    const double gauss_c1 = 10.0 * (1 - options_.outlier_ratio_);
+    const double gauss_c2 = options_.outlier_ratio_ / std::pow(options_.voxel_size_, 3);
+    const double gauss_d3 = -std::log(gauss_c2);
+    gauss_d1_ = -std::log(gauss_c1 + gauss_c2) - gauss_d3;
+    gauss_d2_ = -2 * std::log((-std::log(gauss_c1 * std::exp(-0.5) + gauss_c2) - gauss_d3) / gauss_d1_);
+}
+
+std::unordered_map<Ndt3d::KeyType, Ndt3d::VoxelData, hash_vec<3>> LoadNdtVoxels(const std::string& filename,
+                                                                                double voxel_res) {
+    std::unordered_map<Ndt3d::KeyType, Ndt3d::VoxelData, hash_vec<3>> voxels;
+
+    std::ifstream ifs(filename);
+    while (ifs.good()) {
+        std::string line;
+        std::getline(ifs, line);
+        std::stringstream ss;
+        ss << line;
+
+        double mu_x, mu_y, mu_z;
+        ss >> mu_x >> mu_y >> mu_z;
+
+        double info_00, info_01, info_02, info_11, info_12, info_22;
+        ss >> info_00 >> info_01 >> info_02 >> info_11 >> info_12 >> info_22;
+
+        Ndt3d::VoxelData voxel;
+        // mean
+        voxel.mu_ << mu_x, mu_y, mu_z;
+        // info
+        voxel.info_(0, 0) = info_00;
+        voxel.info_(0, 1) = info_01;
+        voxel.info_(0, 2) = info_02;
+
+        voxel.info_(1, 0) = info_01;
+        voxel.info_(1, 1) = info_11;
+        voxel.info_(1, 2) = info_12;
+
+        voxel.info_(2, 0) = info_02;
+        voxel.info_(2, 1) = info_12;
+        voxel.info_(2, 2) = info_22;
+
+        // cov
+        voxel.sigma_ = voxel.info_.inverse();
+
+        Ndt3d::KeyType key = (voxel.mu_ / voxel_res).cast<int>();
+        voxels[key] = voxel;
+    }
+
+    return voxels;
 }
 
 }  // namespace sad
